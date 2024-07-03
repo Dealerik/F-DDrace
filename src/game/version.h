@@ -2,7 +2,7 @@
 /* If you are missing that file, acquire a complete release at teeworlds.com.                */
 #ifndef GAME_VERSION_H
 #define GAME_VERSION_H
-#define VERSION_RELEASE "16.6.1"
+#define VERSION_RELEASE "16.5.1"
 #define GAME_NAME "F-DDrace"
 #define GAME_VERSION "0.7/0.6, " VERSION_RELEASE
 #define GAME_VERSION_SEVENDOWN "0.6/0.7, " VERSION_RELEASE
@@ -12,5 +12,4 @@
 #define PREV_CLIENT_VERSION 0x0704
 #define SETTINGS_FILENAME "settings07"
 static const char GAME_RELEASE_VERSION[8] = "0.7.5";
-extern const char *GIT_SHORTREV_HASH;
 #endif

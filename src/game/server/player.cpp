@@ -231,7 +231,6 @@ void CPlayer::Reset()
 	m_VoteQuestionRunning = false;
 	m_VoteQuestionType = CPlayer::VOTE_QUESTION_NONE;
 	m_VoteQuestionEndTick = 0;
-	m_LastRedirectTryTick = 0;
 }
 
 void CPlayer::Tick()
@@ -1905,14 +1904,13 @@ bool CPlayer::GivePortalBattery(int Amount)
 	return true;
 }
 
-void CPlayer::OnLogin(bool ForceDesignLoad)
+void CPlayer::OnLogin()
 {
 	GameServer()->SendChatTarget(m_ClientID, "Successfully logged in");
 
 	ExpireItems();
 
-	int AccID = GetAccID();
-	CGameContext::AccountInfo *pAccount = &GameServer()->m_Accounts[AccID];
+	CGameContext::AccountInfo *pAccount = &GameServer()->m_Accounts[GetAccID()];
 	if (m_pCharacter)
 	{
 		if (pAccount->m_VIP == VIP_PLUS)
@@ -1945,18 +1943,14 @@ void CPlayer::OnLogin(bool ForceDesignLoad)
 	if (pAccount->m_Flags&CGameContext::ACCFLAG_HIDEDRAWINGS)
 		m_HideDrawings = true;
 
-	if (ForceDesignLoad)
-		Server()->ChangeMapDesign(m_ClientID, GameServer()->GetCurrentDesignFromList(AccID));
-	else
-		StartVoteQuestion(CPlayer::VOTE_QUESTION_DESIGN);
+	StartVoteQuestion(CPlayer::VOTE_QUESTION_DESIGN);
 }
 
 void CPlayer::OnLogout()
 {
 	GameServer()->SendChatTarget(m_ClientID, "Successfully logged out");
 
-	int AccID = GetAccID();
-	CGameContext::AccountInfo *pAccount = &GameServer()->m_Accounts[AccID];
+	CGameContext::AccountInfo *pAccount = &GameServer()->m_Accounts[GetAccID()];
 	if (m_pCharacter)
 	{
 		if (pAccount->m_VIP == VIP_PLUS)
@@ -1988,7 +1982,7 @@ void CPlayer::OnLogout()
 	if (m_HideDrawings)
 		pAccount->m_Flags |= CGameContext::ACCFLAG_HIDEDRAWINGS;
 
-	GameServer()->UpdateDesignList(AccID, Server()->GetMapDesign(m_ClientID));
+	str_copy(pAccount->m_aDesign, Server()->GetMapDesign(m_ClientID), sizeof(pAccount->m_aDesign));
 
 	if (m_VoteQuestionType == CPlayer::VOTE_QUESTION_DESIGN)
 		OnEndVoteQuestion();
@@ -2001,11 +1995,11 @@ void CPlayer::StartVoteQuestion(VoteQuestionType Type)
 	{
 	case CPlayer::VOTE_QUESTION_DESIGN:
 	{
-		const char *pDesign = GameServer()->GetCurrentDesignFromList(GetAccID());
+		const char *pDesign = GameServer()->m_Accounts[GetAccID()].m_aDesign;
 		if (!pDesign[0] || !str_comp(pDesign, Server()->GetMapDesign(m_ClientID)))
 			return;
 
-		str_format(aText, sizeof(aText), "Load recent design '%s'?", pDesign);
+		str_format(aText, sizeof(aText), "Load recent design '%s'?", GameServer()->m_Accounts[GetAccID()].m_aDesign);
 		break;
 	}
 	}
@@ -2044,7 +2038,7 @@ void CPlayer::OnEndVoteQuestion(int Result)
 	{
 		if (Result == 1)
 		{
-			Server()->ChangeMapDesign(m_ClientID, GameServer()->GetCurrentDesignFromList(GetAccID()));
+			Server()->ChangeMapDesign(m_ClientID, GameServer()->m_Accounts[GetAccID()].m_aDesign);
 		}
 		break;
 	}

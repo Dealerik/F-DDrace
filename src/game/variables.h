@@ -199,6 +199,9 @@ MACRO_CONFIG_INT(SvHideBotsStatus, sv_hide_dummies_status, 1, 0, 1, CFGFLAG_SERV
 // weapon indicator
 MACRO_CONFIG_INT(SvWeaponIndicatorDefault, sv_weapon_indicator_default, 1, 0, 1, CFGFLAG_SERVER, "Whether the weapon names are displayed in the broadcast", AUTHED_ADMIN)
 
+// redirect server tiles
+MACRO_CONFIG_STR(SvRedirectServerTilePorts, sv_redirect_server_tile_ports, 128, "", CFGFLAG_SERVER, "Comma separated list of switch number to port mapping (e.g. 1:8305,2:8303)", AUTHED_ADMIN)
+
 // drops
 MACRO_CONFIG_INT(SvDropWeapons, sv_drop_weapons, 1, 0, 1, CFGFLAG_SERVER|CFGFLAG_GAME, "Whether to allow dropping weapons with f4", AUTHED_ADMIN)
 MACRO_CONFIG_INT(SvDropsOnDeath, sv_drops_on_death, 1, 0, 1, CFGFLAG_SERVER|CFGFLAG_GAME, "Whether there is a chance of dropping weapons on death (health and armor in survival, after 5min in no minigame)", AUTHED_ADMIN)
@@ -223,7 +226,7 @@ MACRO_CONFIG_INT(SvPortalDetonationLinked, sv_portal_detonation_linked, 5, 0, 60
 MACRO_CONFIG_INT(SvPortalDetonation, sv_portal_detonation, 10, 0, 60, CFGFLAG_SERVER, "Time in seconds unlinked portals detonate", AUTHED_ADMIN)
 MACRO_CONFIG_INT(SvPortalMaxDistance, sv_portal_max_distance, 750, 50, 1000, CFGFLAG_SERVER, "Maximum distance to place a portal", AUTHED_ADMIN)
 MACRO_CONFIG_INT(SvPortalRifleShop, sv_portal_rifle_shop, 1, 0, 1, CFGFLAG_SERVER, "Whether portal rifle is in shop", AUTHED_ADMIN)
-MACRO_CONFIG_INT(SvPortalRifleAmmo, sv_portal_rifle_ammo, 1, 0, 1, CFGFLAG_SERVER|CFGFLAG_GAME, "Whether portal rifle entity respawns after x minutes and portal requires ammo", AUTHED_ADMIN)
+MACRO_CONFIG_INT(SvPortalRifleAmmo, sv_portal_rifle_ammo, 0, 0, 1, CFGFLAG_SERVER|CFGFLAG_GAME, "Whether portal rifle entity respawns after x minutes and portal requires ammo", AUTHED_ADMIN)
 MACRO_CONFIG_INT(SvPortalRifleRespawnTime, sv_portal_rifle_respawn_time, 15, 1, 999, CFGFLAG_SERVER, "Time in minutes a portal rifle respawns after pickup", AUTHED_ADMIN)
 MACRO_CONFIG_INT(SvPortalThroughDoor, sv_portal_through_door, 1, 0, 1, CFGFLAG_SERVER, "Whether portal rilfe can be used through a closed door (outside of plot only)", AUTHED_ADMIN)
 
@@ -242,7 +245,7 @@ MACRO_CONFIG_INT(SvClearFreeDrawLevel, sv_clear_free_draw_level, AUTHED_ADMIN, A
 MACRO_CONFIG_INT(SvEditorMaxDistance, sv_editor_max_distance, 750, 0, 99999, CFGFLAG_SERVER, "Maximum distance to place something with draw editor", AUTHED_ADMIN)
 
 // taser battery
-MACRO_CONFIG_INT(SvTaserBatteryRespawnTime, sv_taser_battery_respawn_time, 10, 1, 60, CFGFLAG_SERVER, "Time in minutes a taser battery respawns after pickup", AUTHED_ADMIN)
+MACRO_CONFIG_INT(SvBatteryRespawnTime, sv_battery_respawn_time, 10, 1, 60, CFGFLAG_SERVER, "Time in minutes a taser battery respawns after pickup", AUTHED_ADMIN)
 
 // snake
 MACRO_CONFIG_INT(SvSnakeAutoMove, sv_snake_auto_move, 1, 0, 1, CFGFLAG_SERVER, "Whether snake keeps last input or can stand still if no inputs applied", AUTHED_ADMIN)
@@ -311,9 +314,6 @@ MACRO_CONFIG_STR(SvLibreTranslateKey, sv_libretranslate_key, 128, "", CFGFLAG_SE
 
 // sockets
 MACRO_CONFIG_INT(SvPortTwo, sv_port_two, 8304, 0, 0, CFGFLAG_SAVE|CFGFLAG_SERVER, "Port to use for the second serverinfo", AUTHED_ADMIN)
-
-// redirect server tiles
-MACRO_CONFIG_STR(SvRedirectServerTilePorts, sv_redirect_server_tile_ports, 128, "", CFGFLAG_SERVER, "Comma separated list of switch number to port mapping (e.g. 1:8305,2:8303)", AUTHED_ADMIN)
 
 #if defined(CONF_FAMILY_UNIX)
 MACRO_CONFIG_STR(SvConnLoggingServer, sv_conn_logging_server, 128, "", CFGFLAG_SERVER, "Unix socket server for IP address logging (Unix only)", AUTHED_ADMIN)

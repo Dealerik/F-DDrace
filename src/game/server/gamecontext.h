@@ -464,17 +464,6 @@ public:
 	int GetAccIDByUsername(const char *pUsername);
 	int GetAccount(const char *pUsername);
 	void FreeAccount(int ID);
-	bool IsAccLoggedInThisPort(int ID);
-
-	// acc saved design
-	void UpdateDesignList(int ID, const char *pMapDesign);
-	const char *GetCurrentDesignFromList(int ID);
-	struct SSavedDesignEntry
-	{
-		char m_aMapName[128];
-		char m_aDesign[64];
-	};
-	std::vector<SSavedDesignEntry> GetDesignList(int ID);
 
 	const char *GetAccVarName(int VariableID);
 	const char *GetAccVarValue(int ID, int VariableID);
@@ -501,7 +490,7 @@ public:
 	void WriteAccountStats(int ID);
 	void Logout(int ID, bool Silent = false);
 	void LogoutAllAccounts();
-	bool Login(int ClientID, const char *pUsername, const char *pPassword, bool PasswordRequired = true, bool ForceDesignLoad = false);
+	bool Login(int ClientID, const char *pUsername, const char *pPassword, bool PasswordRequired = true);
 	SHA256_DIGEST HashPassword(const char *pPassword);
 	void SetPassword(int ID, const char *pPassword);
 	bool CheckPassword(int ID, const char *pPassword);
@@ -559,7 +548,7 @@ public:
 		time_t m_LastLoginDate;
 		int m_Flags;
 		char m_aEmail[128];
-		char m_aDesign[256];
+		char m_aDesign[128];
 		int m_PortalBattery;
 		int m_PortalBlocker;
 	};

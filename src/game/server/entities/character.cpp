@@ -3311,13 +3311,24 @@ void CCharacter::HandleTiles(int Index)
 			return;
 		}
 
-		char aBuf[16];
-		str_format(aBuf, sizeof(aBuf), "%d:", SwitchNumber);	
-		const char *pPort = str_find(Config()->m_SvRedirectServerTilePorts, aBuf);
-		int Port = pPort && (pPort + 2) ? atoi(pPort + 2) : 0;
-		if (!TrySafelyRedirectClient(Port))
-			LoadRedirectTile(Port);
-		return;
+		if (!Server()->IsMain(m_pPlayer->GetCID()))
+		{
+			if (!m_LastRedirectTileMsg || m_LastRedirectTileMsg < Server()->Tick() - Server()->TickSpeed() * 5)
+			{
+				GameServer()->SendChatTarget(m_pPlayer->GetCID(), "You can't use this tile as dummy, only with main player");
+				m_LastRedirectTileMsg = Server()->Tick();
+			}
+		}
+		else
+		{
+			char aBuf[16];
+			str_format(aBuf, sizeof(aBuf), "%d:", SwitchNumber);	
+			const char *pPort = str_find(Config()->m_SvRedirectServerTilePorts, aBuf);
+			if (pPort && (pPort + 2) && !m_RedirectTilePort)
+			{
+				TrySavelyRedirectClient(atoi(pPort + 2));
+			}
+		}
 	}
 
 	if (GameServer()->Collision()->IsSwitch(MapIndex) != TILE_PENALTY)
@@ -3993,6 +4004,7 @@ void CCharacter::FDDraceInit()
 	m_pPortalBlocker = 0;
 	m_LastNoBonusTick = 0;
 	m_RedirectTilePort = 0;
+	m_LastRedirectTileMsg = 0;
 	m_RedirectPassiveEndTick = 0;
 }
 
@@ -4814,80 +4826,52 @@ bool CCharacter::OnNoBonusArea(bool Enter, bool Silent)
 	return true;
 }
 
-bool CCharacter::TrySafelyRedirectClient(int Port, bool Force)
+bool CCharacter::TrySavelyRedirectClient(int Port)
 {
-	if (Port == 0 || Port == Config()->m_SvPort)
-		return false;
-
-	int DummyID = Server()->GetDummy(m_pPlayer->GetCID());
-	CPlayer *pDummy = DummyID != -1 ? GameServer()->m_apPlayers[DummyID] : 0;
-	if (!Force && pDummy && (!pDummy->m_LastRedirectTryTick || pDummy->m_LastRedirectTryTick + Server()->TickSpeed() * 30 < Server()->Tick()))
-	{
-		m_pPlayer->m_LastRedirectTryTick = Server()->Tick();
-		GameServer()->SendChatTarget(m_pPlayer->GetCID(), "[WARNING] You need to enter this teleporter with your dummy within 30 seconds in order to get moved safely");
-		return false;
-	}
-
-	CCharacter *pDummyChar = GameServer()->GetPlayerChar(DummyID);
-	if (!Force && pDummy && !pDummyChar)
-	{
-		GameServer()->SendChatTarget(m_pPlayer->GetCID(), "[WARNING] Your dummy has to be alive in order to get moved safely");
-		return false;
-	}
-
-	if (TrySafelyRedirectClientImpl(Port))
-	{
-		// Check if we're alive in case we got kicked and killed by unsupported redirect
-		if (m_Alive)
-		{
-			Die(WEAPON_SELF);
-		}
-		// Forcefully move the dummy asell
-		if (pDummyChar && pDummyChar->TrySafelyRedirectClientImpl(Port) && pDummyChar->m_Alive)
-		{
-			pDummyChar->Die(WEAPON_SELF);
-		}
-		return true;
-	}
-	return false;
-}
-
-bool CCharacter::TrySafelyRedirectClientImpl(int Port)
-{
-	if (Port == 0 || Port == Config()->m_SvPort)
-		return false;
-
 	// We need the port here so it gets saved aswell. If saving didn't work, we reset it
 	m_RedirectTilePort = Port;
-	int IdentityIndex = GameServer()->SaveCharacter(m_pPlayer->GetCID(), SAVE_REDIRECT|SAVE_WALLET, Config()->m_SvShutdownSaveTeeExpire);
-	if (IdentityIndex != -1)
+	if (m_RedirectTilePort != Config()->m_SvPort)
 	{
-		// Wallet got saved, we don't want to drop something to duplicate money or smth
-		m_pPlayer->SetWalletMoney(0);
+		// Reset for saving
+		if (m_RedirectPassiveEndTick)
+			Passive(false, -1, true);
 
-		// Send msg
-		char aMsg[128];
-		str_format(aMsg, sizeof(aMsg), "'%s' has been moved to another map", Server()->ClientName(m_pPlayer->GetCID()));
-		GameServer()->SendChat(-1, CHAT_ALL, -1, aMsg);
+		int IdentityIndex = GameServer()->SaveCharacter(m_pPlayer->GetCID(), SAVE_REDIRECT|SAVE_WALLET, Config()->m_SvShutdownSaveTeeExpire);
+		if (IdentityIndex != -1)
+		{
+			int DummyID = Server()->GetDummy(m_pPlayer->GetCID());
+			if (DummyID != -1)
+				GameServer()->SaveDrop(DummyID, 1, "automatic kick due to redirect tile");
 
-		Server()->SendRedirectSaveTeeAdd(m_RedirectTilePort, GameServer()->GetSavedIdentityHash(GameServer()->m_vSavedIdentities[IdentityIndex]));
-		Server()->RedirectClient(m_pPlayer->GetCID(), m_RedirectTilePort);
-		return true;
+			// Wallet got saved, we don't want to drop something to duplicate money or smth
+			m_pPlayer->SetWalletMoney(0);
+
+			char aMsg[128];
+			str_format(aMsg, sizeof(aMsg), "'%s' has been moved to another map", Server()->ClientName(m_pPlayer->GetCID()));
+			GameServer()->SendChat(-1, CHAT_ALL, -1, aMsg);
+
+			Server()->SendRedirectSaveTeeAdd(m_RedirectTilePort, GameServer()->GetSavedIdentityHash(GameServer()->m_vSavedIdentities[IdentityIndex]));
+			Server()->RedirectClient(m_pPlayer->GetCID(), m_RedirectTilePort);
+			return true;
+		}
+
+		// Restore, probably not needed but whatever
+		if (m_RedirectPassiveEndTick)
+			Passive(true, -1, true);
 	}
 	m_RedirectTilePort = 0;
 	return false;
 }
 
-bool CCharacter::LoadRedirectTile(int Port)
+void CCharacter::LoadRedirectTile(int Port)
 {
 	if (!Port)
-		return false;
+		return;
 
-	vec2 Pos;
 	const char *pList = Config()->m_SvRedirectServerTilePorts;
 	while (1)
 	{
-		if (!pList || !pList[0])
+		if (!pList)
 			break;
 
 		int EntryNumber = 0;
@@ -4895,7 +4879,7 @@ bool CCharacter::LoadRedirectTile(int Port)
 		sscanf(pList, "%d:%d", &EntryNumber, &EntryPort);
 		if (EntryNumber > 0 && EntryPort == Port)
 		{
-			Pos = GameServer()->Collision()->GetRandomRedirectTile(EntryNumber);
+			vec2 Pos = GameServer()->Collision()->GetRandomRedirectTile(EntryNumber);
 			if (Pos != vec2(-1, -1))
 			{
 				ForceSetPos(Pos);
@@ -4904,19 +4888,19 @@ bool CCharacter::LoadRedirectTile(int Port)
 					m_RedirectPassiveEndTick = Server()->Tick() + Server()->TickSpeed() * 3;
 					Passive(true, -1, true);
 				}
-				return true;
 			}
+			else
+			{
+				if (GameServer()->m_pController->CanSpawn(&Pos, ENTITY_SPAWN))
+					ForceSetPos(Pos);
+			}
+			break;
 		}
 
 		// jump to next comma, if it exists skip it so we can start the next loop run with the next data
 		if ((pList = str_find(pList, ",")))
 			pList++;
 	}
-
-	// nothing found, send to spawn tile
-	if (GameServer()->m_pController->CanSpawn(&Pos, ENTITY_SPAWN))
-		ForceSetPos(Pos);
-	return false;
 }
 
 bool CCharacter::TryMountHelicopter()

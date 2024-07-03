@@ -312,7 +312,7 @@ public:
 	void GiveBlockPoints(int Amount, int Victim);
 	bool GiveTaserBattery(int Amount);
 	bool GivePortalBattery(int Amount);
-	void OnLogin(bool ForceDesignLoad = false);
+	void OnLogin();
 	void OnLogout();
 	void SetExpireDate(int Item);
 	bool IsExpiredItem(int Item);
@@ -440,9 +440,6 @@ public:
 	// shutdown tee
 	bool m_CheckedSavePlayer;
 	bool m_LoadedSavedPlayer;
-
-	// redirect tile
-	int64 m_LastRedirectTryTick;
 
 	// vote question
 	enum VoteQuestionType
