@@ -114,6 +114,7 @@ public:
 		MAX_RCONCMD_SEND=16,
 		MAX_MAPLISTENTRY_SEND = 32,
 		MIN_MAPLIST_CLIENTVERSION=0x0703,	// todo 0.8: remove me
+		MIN_FCLIENT_VERSION_REDIRECT=0x0f3040,
 		MAX_RCONCMD_RATIO=8,
 	};
 
@@ -420,6 +421,8 @@ public:
 
 	void SendRconCmdAdd(const IConsole::CCommandInfo *pCommandInfo, int ClientID);
 	void SendRconCmdRem(const IConsole::CCommandInfo *pCommandInfo, int ClientID);
+	int GetConsoleAccessLevel(int ClientId);
+	int NumRconCommands(int ClientId);
 	void UpdateClientRconCommands();
 	void SendMapListEntryAdd(const CMapListEntry *pMapListEntry, int ClientID);
 	void SendMapListEntryRem(const CMapListEntry *pMapListEntry, int ClientID);
@@ -454,6 +457,7 @@ public:
 
 	static int MapListEntryCallback(const char *pFilename, int IsDir, int DirType, void *pUser);
 
+	static void ConPort(IConsole::IResult *pResult, void *pUser);
 	static void ConEuroMode(IConsole::IResult *pResult, void *pUser);
 	static void ConTestingCommands(IConsole::IResult *pResult, void *pUser);
 	static void ConRescue(IConsole::IResult *pResult, void *pUser);
