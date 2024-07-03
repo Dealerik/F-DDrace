@@ -1335,7 +1335,7 @@ void CGameContext::OnTick()
 	{
 		const char* Line = Server()->GetAnnouncementLine(Config()->m_SvAnnouncementFileName);
 		if (Line)
-			SendChat(-1, CHAT_ALL, -1, Line);
+			SendChat(-1, CHAT_ALL, -1, Line, -1, CHAT_SEVEN|CHAT_SEVENDOWN|CHAT_NO_WEBHOOK);
 	}
 
 	if (Collision()->GetNumAllSwitchers() > 0)
@@ -1533,9 +1533,21 @@ void CGameContext::ProgressVoteOptions(int ClientID)
 		}
 	}
 
+	if(pPl->m_SendVoteIndex == 0)
+	{
+		CNetMsg_Sv_VoteOptionGroupStart StartMsg;
+		Server()->SendPackMsg(&StartMsg, MSGFLAG_VITAL, ClientID);
+	}
+
 	Server()->SendMsg(&Msg, MSGFLAG_VITAL, ClientID);
 
 	pPl->m_SendVoteIndex += NumVotesToSend;
+	if(pPl->m_SendVoteIndex == m_NumVoteOptions)
+	{
+		CNetMsg_Sv_VoteOptionGroupEnd EndMsg;
+		Server()->SendPackMsg(&EndMsg, MSGFLAG_VITAL, ClientID);
+	}
+
 }
 
 void CGameContext::OnClientEnter(int ClientID)
@@ -5176,7 +5188,7 @@ bool CGameContext::HasPlotByIP(int ClientID)
 		if (SameIP(ID, &Addr))
 			HasPlot = true;
 
-		if (!m_Accounts[ID].m_LoggedIn)
+		if (!IsAccLoggedInThisPort(ID))
 			FreeAccount(ID);
 
 		if (HasPlot)
@@ -5759,7 +5771,7 @@ void CGameContext::LogoutAllAccounts()
 	dbg_msg("acc", "logged out all accounts");
 }
 
-bool CGameContext::Login(int ClientID, const char *pUsername, const char *pPassword, bool PasswordRequired)
+bool CGameContext::Login(int ClientID, const char *pUsername, const char *pPassword, bool PasswordRequired, bool ForceDesignLoad)
 {
 	CPlayer *pPlayer = m_apPlayers[ClientID];
 	if (!pPlayer)
@@ -5852,7 +5864,7 @@ bool CGameContext::Login(int ClientID, const char *pUsername, const char *pPassw
 		WriteAccountStats(ID);
 	}
 
-	pPlayer->OnLogin();
+	pPlayer->OnLogin(ForceDesignLoad);
 	return true;
 }
 
@@ -5925,6 +5937,97 @@ int CGameContext::GetAccount(const char *pUsername)
 void CGameContext::FreeAccount(int ID)
 {
 	m_Accounts.erase(m_Accounts.begin() + ID);
+}
+
+bool CGameContext::IsAccLoggedInThisPort(int ID)
+{
+	return m_Accounts[ID].m_LoggedIn && m_Accounts[ID].m_Port == Config()->m_SvPort;
+}
+
+void CGameContext::UpdateDesignList(int ID, const char *pMapDesign)
+{
+	std::vector<SSavedDesignEntry> vDesigns = GetDesignList(ID);
+
+	// Update the list
+	bool Found = false;
+	for (unsigned int i = 0; i < vDesigns.size(); i++)
+	{
+		if (str_comp(vDesigns[i].m_aMapName, Server()->GetCurrentMapName()) == 0)
+		{
+			// Update
+			str_copy(vDesigns[i].m_aDesign, pMapDesign, sizeof(vDesigns[i].m_aDesign));
+			Found = true;
+			break;
+		}
+	}
+
+	// Add if not found
+	if (!Found)
+	{
+		SSavedDesignEntry Entry;
+		str_copy(Entry.m_aDesign, pMapDesign, sizeof(Entry.m_aDesign));
+		str_copy(Entry.m_aMapName, Server()->GetCurrentMapName(), sizeof(Entry.m_aDesign));
+		vDesigns.push_back(Entry);
+	}
+
+	// Write list
+	m_Accounts[ID].m_aDesign[0] = '\0';
+	for (unsigned int i = 0; i < vDesigns.size(); i++)
+	{
+		// don't add default's to the list, waste
+		if (str_comp(vDesigns[i].m_aDesign, "default") == 0)
+			continue;
+
+		char aEntry[196];
+		str_format(aEntry, sizeof(aEntry), "%s:%s,", vDesigns[i].m_aMapName, vDesigns[i].m_aDesign);
+		str_append(m_Accounts[ID].m_aDesign, aEntry, sizeof(m_Accounts[ID].m_aDesign));
+	}
+}
+
+const char *CGameContext::GetCurrentDesignFromList(int ID)
+{
+	static char aBuf[128];
+	str_copy(aBuf, "default", sizeof(aBuf));
+
+	std::vector<SSavedDesignEntry> vDesigns = GetDesignList(ID);
+	for (unsigned int i = 0; i < vDesigns.size(); i++)
+	{
+		if (str_comp(vDesigns[i].m_aMapName, Server()->GetCurrentMapName()) == 0)
+		{
+			str_copy(aBuf, vDesigns[i].m_aDesign, sizeof(aBuf));
+			break;
+		}
+	}
+	return aBuf;
+}
+
+std::vector<CGameContext::SSavedDesignEntry> CGameContext::GetDesignList(int ID)
+{
+	std::vector<SSavedDesignEntry> vDesigns;
+	if (ID < ACC_START)
+		return vDesigns;
+
+	const char *pList = m_Accounts[ID].m_aDesign;
+	while (1)
+	{
+		if (!pList || !pList[0])
+			break;
+
+		SSavedDesignEntry Entry;
+		Entry.m_aMapName[0] = '\0';
+		Entry.m_aDesign[0] = '\0';
+		sscanf(pList, "%[^:]:%[^,]", Entry.m_aMapName, Entry.m_aDesign);
+		if (Entry.m_aMapName[0] && Entry.m_aDesign[0])
+		{
+			vDesigns.push_back(Entry);
+		}
+
+		// jump to next comma, if it exists skip it so we can start the next loop run with the next data
+		if ((pList = str_find(pList, ",")))
+			pList++;
+	}
+
+	return vDesigns;
 }
 
 const char *CGameContext::GetDate(time_t Time, bool ShowTime)

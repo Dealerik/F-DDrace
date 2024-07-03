@@ -340,6 +340,7 @@ void CServer::CClient::ResetContent()
 
 	m_Rejoining = false;
 	m_RedirectDropTime = 0;
+	m_Version = 0x0000;
 }
 
 CServer::CServer() : m_DemoRecorder(&m_SnapshotDelta)
@@ -536,7 +537,7 @@ void CServer::RedirectClient(int ClientID, int Port, bool Verbose)
 		return;
 
 	char aBuf[512];
-	bool SupportsRedirect = m_aClients[ClientID].m_DDNetVersion >= VERSION_DDNET_REDIRECT;
+	bool SupportsRedirect = m_aClients[ClientID].m_DDNetVersion >= VERSION_DDNET_REDIRECT || m_aClients[ClientID].m_Version >= MIN_FCLIENT_VERSION_REDIRECT;
 	if(Verbose)
 	{
 		str_format(aBuf, sizeof(aBuf), "redirecting '%s' to port %d supported=%d", ClientName(ClientID), Port, SupportsRedirect);
@@ -547,7 +548,10 @@ void CServer::RedirectClient(int ClientID, int Port, bool Verbose)
 	{
 		bool SamePort = Port == Config()->m_SvPort;
 		str_format(aBuf, sizeof(aBuf), "Redirect unsupported: please connect to port %d", Port);
+		int RconCID = m_RconClientID;
+		m_RconClientID = IServer::RCON_CID_SERV;
 		Kick(ClientID, SamePort ? "Redirect unsupported: please reconnect" : aBuf);
+		m_RconClientID = RconCID;
 		return;
 	}
 
@@ -555,7 +559,7 @@ void CServer::RedirectClient(int ClientID, int Port, bool Verbose)
 	Msg.AddInt(Port);
 	SendMsg(&Msg, MSGFLAG_VITAL | MSGFLAG_FLUSH, ClientID);
 
-	m_aClients[ClientID].m_RedirectDropTime = time_get() + time_freq() * 10;
+	m_aClients[ClientID].m_RedirectDropTime = time_get() + time_freq() * 5;
 	m_aClients[ClientID].m_State = CClient::STATE_REDIRECTED;
 }
 
@@ -1291,17 +1295,39 @@ void CServer::SendRconCmdRem(const IConsole::CCommandInfo *pCommandInfo, int Cli
 	SendMsg(&Msg, MSGFLAG_VITAL, ClientID);
 }
 
+int CServer::GetConsoleAccessLevel(int ClientId)
+{
+	return m_aClients[ClientId].m_Authed == AUTHED_ADMIN ? IConsole::ACCESS_LEVEL_ADMIN : m_aClients[ClientId].m_Authed == AUTHED_MOD ? IConsole::ACCESS_LEVEL_MOD : IConsole::ACCESS_LEVEL_HELPER;
+}
+
+int CServer::NumRconCommands(int ClientId)
+{
+	int Num = 0;
+	int ConsoleAccessLevel = GetConsoleAccessLevel(ClientId);
+	for(const IConsole::CCommandInfo *pCmd = Console()->FirstCommandInfo(ConsoleAccessLevel, CFGFLAG_SERVER);
+		pCmd; pCmd = pCmd->NextCommandInfo(ConsoleAccessLevel, CFGFLAG_SERVER))
+	{
+		Num++;
+	}
+	return Num;
+}
+
 void CServer::UpdateClientRconCommands()
 {
 	for(int ClientID = Tick() % MAX_RCONCMD_RATIO; ClientID < MAX_CLIENTS; ClientID += MAX_RCONCMD_RATIO)
 	{
 		if(m_aClients[ClientID].m_State != CClient::STATE_EMPTY && m_aClients[ClientID].m_Authed)
 		{
-			int ConsoleAccessLevel = m_aClients[ClientID].m_Authed == AUTHED_ADMIN ? IConsole::ACCESS_LEVEL_ADMIN : m_aClients[ClientID].m_Authed == AUTHED_MOD ? IConsole::ACCESS_LEVEL_MOD : IConsole::ACCESS_LEVEL_HELPER;
+			int ConsoleAccessLevel = GetConsoleAccessLevel(ClientID);
 			for(int i = 0; i < MAX_RCONCMD_SEND && m_aClients[ClientID].m_pRconCmdToSend; ++i)
 			{
 				SendRconCmdAdd(m_aClients[ClientID].m_pRconCmdToSend, ClientID);
 				m_aClients[ClientID].m_pRconCmdToSend = m_aClients[ClientID].m_pRconCmdToSend->NextCommandInfo(ConsoleAccessLevel, CFGFLAG_SERVER);
+				if(m_aClients[ClientID].m_pRconCmdToSend == 0)
+				{
+					CMsgPacker Msg(NETMSG_RCON_CMD_GROUP_END, true);
+					SendMsg(&Msg, MSGFLAG_VITAL, ClientID);
+				}
 			}
 		}
 	}
@@ -1594,7 +1620,11 @@ void CServer::ProcessClientPacket(CNetChunk *pPacket)
 
 					// When default map design is specified and we just joined, don't call this function
 					if (m_aClients[ClientID].m_State == CClient::STATE_INGAME)
+					{
 						GameServer()->MapDesignChangeDone(ClientID);
+						// Reset so the server doesnt need to resend big snapshot deltas or smth, we can connect quicker
+						m_aClients[ClientID].m_LastAckedSnapshot = -1;
+					}
 
 					int Dummy = GetDummy(ClientID);
 					if (Dummy != -1)
@@ -1817,6 +1847,14 @@ void CServer::ProcessClientPacket(CNetChunk *pPacket)
 						// AUTHED_ADMIN - AuthLevel gets the proper IConsole::ACCESS_LEVEL_<x>
 						// TODO: Check if it still does
 						m_aClients[ClientID].m_pRconCmdToSend = Console()->FirstCommandInfo(AUTHED_ADMIN - AuthLevel, CFGFLAG_SERVER);
+						CMsgPacker MsgStart(NETMSG_RCON_CMD_GROUP_START, true);
+						MsgStart.AddInt(NumRconCommands(ClientID));
+						SendMsg(&MsgStart, MSGFLAG_VITAL, ClientID);
+						if(m_aClients[ClientID].m_pRconCmdToSend == 0)
+						{
+							CMsgPacker MsgEnd(NETMSG_RCON_CMD_GROUP_END, true);
+							SendMsg(&MsgEnd, MSGFLAG_VITAL, ClientID);
+						}
 
 						// TODO: Check if we want to send all maps to all rcon clients
 						if(m_aClients[ClientID].m_Version >= MIN_MAPLIST_CLIENTVERSION && !m_aClients[ClientID].m_Sevendown)
@@ -2223,7 +2261,7 @@ void CServer::UpdateRegisterServerInfo()
 
 	sha256_str(m_CurrentMapSha256, aMapSha256, sizeof(aMapSha256));
 
-	char aInfo[16384];
+	char aInfo[32768];
 	str_format(aInfo, sizeof(aInfo),
 		"{"
 		"\"max_clients\":%d,"
@@ -2691,6 +2729,11 @@ int CServer::Run()
 	Console()->Print(IConsole::OUTPUT_LEVEL_STANDARD, "server", aBuf);
 	str_format(aBuf, sizeof(aBuf), "game version %s", GameServer()->Version());
 	Console()->Print(IConsole::OUTPUT_LEVEL_STANDARD, "server", aBuf);
+	if(GIT_SHORTREV_HASH)
+	{
+		str_format(aBuf, sizeof(aBuf), "git revision hash: %s", GIT_SHORTREV_HASH);
+		Console()->Print(IConsole::OUTPUT_LEVEL_STANDARD, "server", aBuf);
+	}
 
 	// process pending commands
 	m_pConsole->StoreCommands(false);
@@ -2993,6 +3036,13 @@ int CServer::MapListEntryCallback(const char *pFilename, int IsDir, int DirType,
 	str_truncate(pEntry->m_aName, sizeof(pEntry->m_aName), aFilename, pSuffix-aFilename);
 
 	return 0;
+}
+
+void CServer::ConPort(IConsole::IResult *pResult, void *pUser)
+{
+	char aBuf[128];
+	str_format(aBuf, sizeof(aBuf), "Value: %d", ((CServer *)pUser)->Config()->m_SvPort);
+	((CServer *)pUser)->m_pConsole->Print(IConsole::OUTPUT_LEVEL_STANDARD, "console", aBuf);
 }
 
 void CServer::ConEuroMode(IConsole::IResult *pResult, void *pUser)
@@ -3785,6 +3835,7 @@ int main(int argc, const char **argv) // ignore_convention
 	pConsole->Register("sv_test_cmds", "", CFGFLAG_SERVER, CServer::ConTestingCommands, pServer, "Turns testing commands aka cheats on/off", AUTHED_ADMIN);
 	pConsole->Register("sv_rescue", "", CFGFLAG_SERVER, CServer::ConRescue, pServer, "Allow /rescue command so players can teleport themselves out of freeze", AUTHED_ADMIN);
 	pConsole->Register("sv_euro_mode", "", CFGFLAG_SERVER, CServer::ConEuroMode, pServer, "Whether euro mode is enabled", AUTHED_ADMIN);
+	pConsole->Register("sv_port", "", CFGFLAG_SERVER, CServer::ConPort, pServer, "Port to use for the server", AUTHED_ADMIN);
 
 	pEngine->InitLogfile();
 

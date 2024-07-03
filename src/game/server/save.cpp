@@ -173,7 +173,7 @@ void CSaveTee::Save(CCharacter *pChr)
 	}
 	m_FakeTuneCollision = pChr->m_FakeTuneCollision;
 	m_OldFakeTuneCollision = pChr->m_OldFakeTuneCollision;
-	m_Passive = pChr->m_Passive;
+	m_Passive = pChr->m_RedirectPassiveEndTick ? false : pChr->m_Passive;
 	m_PoliceHelper = pChr->m_PoliceHelper;
 	m_Item = pChr->m_Item;
 	m_DoorHammer = pChr->m_DoorHammer;
@@ -392,7 +392,7 @@ void CSaveTee::Load(CCharacter *pChr, int Team)
 	if (m_Flags&SAVE_IDENTITY)
 	{
 		if (m_Identity.m_aAccUsername[0] != '\0')
-			pChr->GameServer()->Login(pChr->GetPlayer()->GetCID(), m_Identity.m_aAccUsername, "", false);
+			pChr->GameServer()->Login(pChr->GetPlayer()->GetCID(), m_Identity.m_aAccUsername, "", false, true);
 		if (m_Flags&SAVE_REDIRECT)
 			pChr->LoadRedirectTile(m_PreviousPort == pChr->Config()->m_SvPort ? m_Identity.m_RedirectTilePort : m_PreviousPort);
 	}
@@ -562,11 +562,11 @@ int CSaveTee::LoadString(char* String)
 		"%d\t%d\t%d\t%d\t%d\t%d\t"
 		"%d\t%d\t%d\t%lld\t%d\t%d\t%d\t%d\t%d\t%d\t"
 		"%lld\t%lld\t%d\t%d\t%d\t%d\t"
-		"%s\t%s\t%s\t%[^\t]\t%lld\t%d\t"
-		"%s\t%s\t%s\t%s\t%s\t%s\t"
+		"%[^\t]\t%[^\t]\t%[^\t]\t%[^\t]\t%lld\t%d\t"
+		"%[^\t]\t%[^\t]\t%[^\t]\t%[^\t]\t%[^\t]\t%[^\t]\t"
 		"%d\t%d\t%d\t%d\t%d\t%d\t"
 		"%d\t%d\t%d\t%d\t%d\t%d\t"
-		"%s\t%d\t%d\t%d",
+		"%[^\t]\t%d\t%d\t%d",
 		m_aName, &m_Alive, &m_Paused, &m_TeeFinished, &m_IsSolo,
 		&m_aWeapons[0].m_AmmoRegenStart, &m_aWeapons[0].m_Ammo, &m_aWeapons[0].m_Got,
 		&m_aWeapons[1].m_AmmoRegenStart, &m_aWeapons[1].m_Ammo, &m_aWeapons[1].m_Got,
@@ -623,6 +623,7 @@ int CSaveTee::LoadString(char* String)
 	{
 		m_Identity.m_ExpireDate = (time_t)ExpireDate;
 		net_addr_from_str(&m_Identity.m_Addr, aSavedAddress);
+
 		if (str_comp(m_Identity.m_aAccUsername, "$") == 0)
 			str_copy(m_Identity.m_aAccUsername, "", sizeof(m_Identity.m_aAccUsername));
 
